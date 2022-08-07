@@ -29,6 +29,7 @@ impl TryFrom<u8> for ComponentChange {
 
 pub trait NetworkedFrame: std::fmt::Debug + Sized + Send + Sync + 'static {
     fn generate_frame(tick: u16, world: &mut bevy::prelude::World) -> Self;
+    fn apply_in_world(&self, world: &mut bevy::prelude::World);
     fn write_full_frame(&self, writer: &mut BitWriter) -> Result<(), io::Error>;
     fn read_frame(reader: &mut BitReader, world: &mut bevy::prelude::World) -> Result<Self, io::Error>;
 }
@@ -36,9 +37,18 @@ pub trait NetworkedFrame: std::fmt::Debug + Sized + Send + Sync + 'static {
 pub trait Networked {
     type Component: bevy::prelude::Component + PartialEq + Clone + std::fmt::Debug;
 
-    fn can_delta(old: &Self::Component, new: &Self::Component) -> bool;
-    fn write_delta(old: &Self::Component, new: &Self::Component, writer: &mut BitWriter) -> Result<(), io::Error>;
-    fn read_delta(old: &Self::Component, reader: &mut BitReader) -> Result<Self::Component, io::Error>;
+    fn can_delta(_old: &Self::Component, _new: &Self::Component) -> bool {
+        false
+    }
+
+    fn write_delta(_old: &Self::Component, _new: &Self::Component, _writer: &mut BitWriter) -> Result<(), io::Error> {
+        panic!("Delta encoding not implemented for component");
+    }
+
+    fn read_delta(_old: &Self::Component, _reader: &mut BitReader) -> Result<Self::Component, io::Error> {
+        panic!("Delta encoding not implemented for component");
+    }
+
     fn write_full(component: &Self::Component, writer: &mut BitWriter) -> Result<(), io::Error>;
     fn read_full(reader: &mut BitReader) -> Result<Self::Component, io::Error>;
 }
@@ -73,6 +83,40 @@ macro_rules! network_frame {
                     }
                 }
 
+
+                fn apply_in_world(&self, world: &mut bevy::prelude::World) {
+                    world.resource_scope(|world, mut mapping: Mut<$crate::NetworkMapping>| {
+                        // Remove entities
+                        mapping.0.retain(|network_id, entity| {
+                            let removed = !self.entities.contains(network_id);
+                            if removed {
+                                world.despawn(*entity);
+                            }
+
+                            !removed
+                        });
+
+                        // Create new networked entities
+                        for network_id in self.entities.iter() {
+                            if !mapping.0.contains_key(network_id) {
+                                let entity_id = world.spawn().insert($crate::NetworkID(network_id.0)).id();
+                                mapping.0.insert(*network_id, entity_id);
+                            }
+                        }
+
+                        // Replicate components
+                        $(
+                            for (i, network_id) in self.entities.iter().enumerate() {
+                                if let Some(component) = &self.[<$type:snake:lower>][i] {
+                                    // Should always exist a mapped entity by now
+                                    let mapped_entity = mapping.0.get(network_id).unwrap();
+                                    let mut entity_mut = world.entity_mut(*mapped_entity);
+                                    entity_mut.insert(component.clone());
+                                }
+                            }
+                        )*
+                    });
+                }
 
                 fn write_full_frame(&self, writer: &mut $crate::bit_serializer::BitWriter) -> Result<(), std::io::Error> {
                     $crate::write_frame_header(writer, self.tick, None, &self.entities)?;

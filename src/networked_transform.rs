@@ -30,7 +30,7 @@ impl Networked for TransformNetworked {
         write_f32_range(writer, translation.z, -256.0, 255.0, 0.01)?;
 
         let rotation = transform.rotation;
-        write_quat(writer, rotation, 9)?;
+        write_quat(writer, rotation, 11)?;
 
         let scale = transform.scale;
         write_f32_range(writer, scale.x, 0.0, 128.0, 0.01)?;
@@ -48,7 +48,7 @@ impl Networked for TransformNetworked {
         let translation = Vec3::new(t_x, t_y, t_z);
         // println!("translation: {:?}", translation);
 
-        let rotation = read_quat(reader, 9)?;
+        let rotation = read_quat(reader, 11)?;
         // println!("rotation: {:?}", rotation);
 
         let s_x = read_f32_range(reader, 0.0, 128.0, 0.01)?;

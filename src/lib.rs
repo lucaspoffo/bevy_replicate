@@ -18,7 +18,7 @@ use std::{collections::HashMap, io, marker::PhantomData};
 
 pub struct NetworkTick(pub u16);
 
-struct NetworkFrameBuffer<T>(SequenceBuffer<T>);
+pub struct NetworkFrameBuffer<T>(pub SequenceBuffer<T>);
 
 pub struct LastNetworkTick(pub HashMap<u64, u16>);
 
@@ -33,6 +33,7 @@ impl<T> Default for ReplicateServerPlugin<T> {
 }
 
 impl<T: NetworkedFrame> Plugin for ReplicateServerPlugin<T> {
+    // TODO: cleanup NetworkEntity when entity is despawned
     fn build(&self, app: &mut App) {
         app.insert_resource(NetworkEntities::default());
         app.insert_resource(NetworkTick(0));
@@ -77,8 +78,39 @@ pub fn replicate<T: NetworkedFrame>(_client: u64, world: &mut World) -> Result<V
     writer.consume()
 }
 
-pub fn process_snap<T: NetworkedFrame>(buffer: Vec<u8>, world: &mut World) -> Result<T, io::Error> {
+pub fn process_snap<T: NetworkedFrame>(buffer: Vec<u8>, world: &mut World) -> Result<(), io::Error> {
     let mut reader = BitReader::new(&buffer)?;
+    let frame = T::read_frame(&mut reader, world)?;
+    let mut frames = world.get_resource_mut::<Events<T>>().unwrap();
+    frames.send(frame);
 
-    T::read_frame(&mut reader, world)
+    Ok(())
 }
+
+pub struct ReplicateClientPlugin<T> {
+    data: PhantomData<T>,
+}
+
+impl<T> Default for ReplicateClientPlugin<T> {
+    fn default() -> Self {
+        Self { data: PhantomData }
+    }
+}
+
+impl<T: NetworkedFrame> Plugin for ReplicateClientPlugin<T> {
+    fn build(&self, app: &mut App) {
+        app.add_event::<T>();
+        app.insert_resource(NetworkMapping(HashMap::new()));
+        app.add_system_to_stage(CoreStage::PreUpdate, apply_network_frame::<T>.exclusive_system().at_end());
+    }
+}
+
+fn apply_network_frame<T: NetworkedFrame>(world: &mut World) {
+    world.resource_scope(|world, network_frames: Mut<Events<T>>| {
+        for frame in network_frames.get_reader().iter(&network_frames) {
+            frame.apply_in_world(world);
+        }
+    });
+}
+
+pub struct NetworkMapping(pub HashMap<NetworkID, Entity>);

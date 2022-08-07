@@ -5,7 +5,7 @@ const MAX_ID: u16 = 1 << ID_BITS - 1;
 pub const MAX_LENGTH: usize = 1 << ID_BITS;
 
 #[derive(Debug, Component, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct NetworkID(pub(crate) u16);
+pub struct NetworkID(pub u16);
 
 #[derive(Debug)]
 pub struct NetworkEntities {
