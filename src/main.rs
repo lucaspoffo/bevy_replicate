@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_renet::{
     renet::{
         ClientAuthentication, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
@@ -10,6 +11,7 @@ use bevy_replicate::{
     Networked, NetworkedFrame, ReplicateClientPlugin, ReplicateServerPlugin,
 };
 use bit_serializer::BitWriter;
+use renet_visualizer::RenetClientVisualizer;
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -98,6 +100,8 @@ fn main() {
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
+    app.add_plugin(EguiPlugin);
+
     app.insert_resource(Lobby::default());
 
     if is_host {
@@ -115,6 +119,9 @@ fn main() {
         app.add_system(spawn_client_bundle);
         app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
         app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
+
+        app.insert_resource(RenetClientVisualizer::<200>::default());
+        app.add_system(update_client_visulizer_system);
 
         app.add_plugin(ReplicateClientPlugin::<NetworkFrame>::default());
         app.add_system_to_stage(CoreStage::PreUpdate, read_network_frame.exclusive_system().at_end());
@@ -275,5 +282,21 @@ fn spawn_client_bundle(
             transform: Transform::from_xyz(0.0, 0.5, 0.0),
             ..Default::default()
         });
+    }
+}
+
+fn update_client_visulizer_system(
+    mut egui_context: ResMut<EguiContext>,
+    mut visualizer: ResMut<RenetClientVisualizer<200>>,
+    client: Res<RenetClient>,
+    mut show_visualizer: Local<bool>,
+    keyboard_input: Res<Input<KeyCode>>,
+) {
+    visualizer.add_network_info(client.network_info());
+    if keyboard_input.just_pressed(KeyCode::F1) {
+        *show_visualizer = !*show_visualizer;
+    }
+    if *show_visualizer {
+        visualizer.show_window(egui_context.ctx_mut());
     }
 }
