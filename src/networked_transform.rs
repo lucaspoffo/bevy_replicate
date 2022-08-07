@@ -1,4 +1,4 @@
-use crate::network::Networked;
+use crate::network_frame::Networked;
 
 use bevy::prelude::*;
 use bit_serializer::{BitReader, BitWriter};
@@ -11,19 +11,19 @@ pub struct TransformNetworked;
 impl Networked for TransformNetworked {
     type Component = Transform;
 
-    fn can_delta(&self, _old: &Self::Component, _new: &Self::Component) -> bool {
+    fn can_delta(_old: &Self::Component, _new: &Self::Component) -> bool {
         false
     }
 
-    fn write_delta(&self, _old: &Self::Component, _new: &Self::Component, _writer: &mut BitWriter) -> Result<(), io::Error> {
+    fn write_delta(&_old: &Self::Component, _new: &Self::Component, _writer: &mut BitWriter) -> Result<(), io::Error> {
         todo!()
     }
 
-    fn read_delta(&self, _old: &Self::Component, _reader: &mut BitReader) -> Result<Self::Component, io::Error> {
+    fn read_delta(_old: &Self::Component, _reader: &mut BitReader) -> Result<Self::Component, io::Error> {
         todo!()
     }
 
-    fn write_full(&self, transform: &Transform, writer: &mut BitWriter) -> Result<(), io::Error> {
+    fn write_full(transform: &Transform, writer: &mut BitWriter) -> Result<(), io::Error> {
         let translation = transform.translation;
         write_f32_range(writer, translation.x, -256.0, 255.0, 0.01)?;
         write_f32_range(writer, translation.y, 0.0, 32.0, 0.01)?;
@@ -40,7 +40,7 @@ impl Networked for TransformNetworked {
         Ok(())
     }
 
-    fn read_full(&self, reader: &mut BitReader) -> Result<Self::Component, io::Error> {
+    fn read_full(reader: &mut BitReader) -> Result<Self::Component, io::Error> {
         let t_x = read_f32_range(reader, -256.0, 255.0, 0.01)?;
         let t_y = read_f32_range(reader, 0.0, 32.0, 0.01)?;
         let t_z = read_f32_range(reader, -256.0, 255.0, 0.01)?;

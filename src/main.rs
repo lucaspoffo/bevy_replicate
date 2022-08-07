@@ -1,14 +1,9 @@
-fn main() {
+use bevy_replicate::{generate_frame, network_frame, process_snap, replicate, LastNetworkTick, NetworkTick};
 
-}
-
-/*
-use std::collections::HashMap;
 use bevy::prelude::*;
-use bevy_replicate::{
-    deserialize_full_snap, network_entity::NetworkEntities, networked_transform::TransformNetworked, sequence_buffer::SequenceBuffer,
-    serialize_full_snap, LastNetworkTick,
-};
+use bevy_replicate::{network_entity::NetworkEntities, networked_transform::TransformNetworked, ReplicateServerPlugin};
+
+network_frame!(TransformNetworked);
 
 #[derive(Debug, Component)]
 struct Velocity(Vec3);
@@ -16,12 +11,7 @@ struct Velocity(Vec3);
 fn main() {
     let mut world = World::new();
 
-    init_network_component::<TransformNetworked>(&mut world);
-
-    world.insert_resource(NetworkTick(0));
-    world.insert_resource(NetworkFrames(SequenceBuffer::with_capacity(100)));
-    world.insert_resource(LastNetworkTick(HashMap::new()));
-
+    ReplicateServerPlugin::<NetworkFrame>::init_resources(&mut world);
     let mut network_entities = NetworkEntities::default();
 
     for i in 0..10 {
@@ -39,9 +29,11 @@ fn main() {
 
     for _ in 0..10 {
         update_position.run((), &mut world);
-        let buffer = serialize_delta_snap(&mut world, 0).unwrap();
+        generate_frame::<NetworkFrame>(&mut world);
+        let buffer = replicate::<NetworkFrame>(0, &mut world).unwrap();
         println!("buffer len {}", buffer.len());
-        deserialize_delta_snap(buffer, &mut world).unwrap();
+        let frame = process_snap::<NetworkFrame>(buffer, &mut world).unwrap();
+        println!("\n\nProcessed:\n\n {:?}", frame);
 
         network_tick.run((), &mut world);
     }
@@ -61,4 +53,3 @@ fn network_tick(mut network_tick: ResMut<NetworkTick>, mut last_received_tick: R
         last_received_tick.0.insert(0, 0);
     }
 }
-*/
