@@ -12,15 +12,15 @@ impl Networked for TransformNetworked {
     type Component = Transform;
 
     fn can_delta(_old: &Self::Component, _new: &Self::Component) -> bool {
-        false
+        true
     }
 
-    fn write_delta(&_old: &Self::Component, _new: &Self::Component, _writer: &mut BitWriter) -> Result<(), io::Error> {
-        todo!()
+    fn write_delta(&_old: &Self::Component, new: &Self::Component, writer: &mut BitWriter) -> Result<(), io::Error> {
+        Self::write_full(new, writer)
     }
 
-    fn read_delta(_old: &Self::Component, _reader: &mut BitReader) -> Result<Self::Component, io::Error> {
-        todo!()
+    fn read_delta(_old: &Self::Component, reader: &mut BitReader) -> Result<Self::Component, io::Error> {
+        Self::read_full(reader)
     }
 
     fn write_full(transform: &Transform, writer: &mut BitWriter) -> Result<(), io::Error> {

@@ -2,15 +2,15 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_renet::{
     renet::{
-        ClientAuthentication, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
+        ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication,
+        ServerConfig, ServerEvent,
     },
     run_if_client_connected, RenetClientPlugin, RenetServerPlugin,
 };
 use bevy_replicate::{
-    network_entity::NetworkEntities, network_frame, networked_transform::TransformNetworked, process_snap, NetworkFrameBuffer, NetworkTick,
-    Networked, NetworkedFrame, ReplicateClientPlugin, ReplicateServerPlugin,
+    network_entity::NetworkEntities, network_frame, networked_transform::TransformNetworked, process_snap, replicate, LastNetworkTick,
+    LastReceivedNetworkTick, NetworkFrameBuffer, NetworkTick, Networked, ReplicateClientPlugin, ReplicateServerPlugin,
 };
-use bit_serializer::BitWriter;
 use renet_visualizer::RenetClientVisualizer;
 
 use std::time::SystemTime;
@@ -119,6 +119,7 @@ fn main() {
         app.add_system(spawn_client_bundle);
         app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
         app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
+        app.add_system(client_send_last_received_tick.with_run_criteria(run_if_client_connected));
 
         app.insert_resource(RenetClientVisualizer::<200>::default());
         app.add_system(update_client_visulizer_system);
@@ -141,6 +142,7 @@ fn server_update_system(
     mut lobby: ResMut<Lobby>,
     mut server: ResMut<RenetServer>,
     mut network_entities: ResMut<NetworkEntities>,
+    mut last_received_tick: ResMut<LastNetworkTick>,
 ) {
     for event in server_events.iter() {
         match event {
@@ -164,6 +166,7 @@ fn server_update_system(
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
+                last_received_tick.0.remove(&id);
                 if let Some(player_entity) = lobby.players.remove(id) {
                     commands.entity(player_entity).despawn();
                 }
@@ -172,7 +175,7 @@ fn server_update_system(
     }
 
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, 0) {
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::Reliable) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
             if let Some(player_entity) = lobby.players.get(&client_id) {
                 commands.entity(*player_entity).insert(player_input);
@@ -185,24 +188,41 @@ fn server_sync_players(
     mut server: ResMut<RenetServer>,
     network_tick: Res<NetworkTick>,
     network_buffer: Res<NetworkFrameBuffer<NetworkFrame>>,
+    mut last_received_tick: ResMut<LastNetworkTick>,
 ) {
-    let frame = network_buffer.0.get(network_tick.0).unwrap();
-    let mut writer = BitWriter::with_capacity(1000);
-    frame.write_full_frame(&mut writer).unwrap();
+    // Update last received tick
+    for client_id in server.clients_id().into_iter() {
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::Unreliable) {
+            let tick = u16::from_le_bytes(message.try_into().unwrap());
+            match last_received_tick.0.get_mut(&client_id) {
+                None => {
+                    last_received_tick.0.insert(client_id, tick);
+                }
+                Some(last_tick) => {
+                    if *last_tick < tick {
+                        *last_tick = tick;
+                    }
+                }
+            }
+        }
+    }
 
-    server.broadcast_message(1, writer.consume().unwrap());
+    for client_id in server.clients_id().into_iter() {
+        let message = replicate::<NetworkFrame>(client_id, &network_tick, &network_buffer, &last_received_tick).unwrap();
+        server.send_message(client_id, DefaultChannel::Unreliable, message);
+    }
 }
 
 fn read_network_frame(world: &mut World) {
     world.resource_scope(|world, mut client: Mut<RenetClient>| {
-        while let Some(message) = client.receive_message(1) {
+        while let Some(message) = client.receive_message(DefaultChannel::Unreliable) {
             process_snap::<NetworkFrame>(message, world).unwrap();
         }
     });
 }
 
 fn client_sync_players(mut client: ResMut<RenetClient>) {
-    while let Some(message) = client.receive_message(0) {
+    while let Some(message) = client.receive_message(DefaultChannel::Reliable) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
             ServerMessages::PlayerConnected { id } => {
@@ -250,7 +270,13 @@ fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_input: ResMut<Pl
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(0, input_message);
+    client.send_message(DefaultChannel::Reliable, input_message);
+}
+
+fn client_send_last_received_tick(mut client: ResMut<RenetClient>, last_received_tick: Res<LastReceivedNetworkTick>) {
+    if let Some(tick) = last_received_tick.0 {
+        client.send_message(DefaultChannel::Unreliable, tick.to_le_bytes().to_vec());
+    }
 }
 
 fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: Res<Time>) {
