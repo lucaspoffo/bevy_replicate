@@ -1,12 +1,12 @@
 use bit_serializer::{BitReader, BitWriter};
 use std::{collections::HashMap, io};
 
-use crate::NetworkID;
+use crate::{network_entity, NetworkID};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ComponentChange {
     FullChange,
-    Removed,
+    NoComponent,
     NoChange,
     DeltaChange,
 }
@@ -19,7 +19,7 @@ impl TryFrom<u8> for ComponentChange {
 
         match value {
             0 => Ok(FullChange),
-            1 => Ok(Removed),
+            1 => Ok(NoComponent),
             2 => Ok(NoChange),
             3 => Ok(DeltaChange),
             _ => Err("Invalid ComponentChange id"),
@@ -165,7 +165,7 @@ macro_rules! network_frame {
                                     &delta_mapping
                                 )?;
                             )*
-                            
+
                             Ok(Self {
                                 tick: header.tick,
                                 entities: header.entities,
@@ -223,7 +223,7 @@ pub fn read_frame_header(reader: &mut BitReader) -> Result<FrameHeader, io::Erro
     let delta_tick = if is_delta { Some(reader.read_varint_u16()?) } else { None };
     let tick = reader.read_varint_u16()?;
     let len = reader.read_varint_u16()? as usize;
-    if len > 4096 {
+    if len > network_entity::MAX_LENGTH {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "network entities length above limit"));
     }
     let mut entities = Vec::with_capacity(len);
@@ -244,7 +244,7 @@ pub fn write_full_component<T: Networked>(writer: &mut BitWriter, components: &[
     for component in components.iter() {
         match component {
             Some(_) => writer.write_bits(ComponentChange::FullChange as u32, 1)?,
-            None => writer.write_bits(ComponentChange::Removed as u32, 1)?,
+            None => writer.write_bits(ComponentChange::NoComponent as u32, 1)?,
         }
     }
 
@@ -273,10 +273,10 @@ pub fn read_full_component<T: Networked>(reader: &mut BitReader, entities_len: u
                 let component = T::read_full(reader)?;
                 components.push(Some(component));
             }
-            ComponentChange::Removed => {
+            ComponentChange::NoComponent => {
                 components.push(None);
             }
-            _ => unreachable!("Reading one bit should always return FullChange or Removed")
+            _ => unreachable!("Reading one bit should always return FullChange or Removed"),
         }
     }
 
@@ -310,7 +310,7 @@ pub fn write_delta_component<T: Networked>(
             .get(&entities[i])
             .and_then(|index| previous_components[*index].as_ref());
         match (previous, current) {
-            (_, None) => write_change(ComponentChange::Removed)?,
+            (_, None) => write_change(ComponentChange::NoComponent)?,
             (None, Some(_)) => write_change(ComponentChange::FullChange)?,
             (Some(previous), Some(current)) if previous == current => write_change(ComponentChange::NoChange)?,
             (Some(previous), Some(current)) if T::can_delta(previous, current) => write_change(ComponentChange::DeltaChange)?,
@@ -320,7 +320,7 @@ pub fn write_delta_component<T: Networked>(
 
     for (i, change) in changes.iter().enumerate() {
         match change {
-            ComponentChange::Removed | ComponentChange::NoChange => {}
+            ComponentChange::NoComponent | ComponentChange::NoChange => {}
             ComponentChange::FullChange => {
                 let component = current_components[i].as_ref().unwrap();
                 T::write_full(component, writer)?;
@@ -361,7 +361,7 @@ pub fn read_delta_component<T: Networked>(
                 let component = T::read_full(reader)?;
                 components.push(Some(component));
             }
-            ComponentChange::Removed => {
+            ComponentChange::NoComponent => {
                 components.push(None);
             }
             ComponentChange::NoChange => match delta_mapping.get(&entities[i]) {
@@ -392,7 +392,7 @@ pub fn read_delta_component<T: Networked>(
 mod tests {
     use bevy::prelude::Component;
 
-    use crate::{NetworkFrameBuffer, sequence_buffer::SequenceBuffer};
+    use crate::{sequence_buffer::SequenceBuffer, NetworkFrameBuffer};
 
     use super::*;
 
@@ -425,11 +425,7 @@ mod tests {
         fn read_delta(old: &Self::Component, reader: &mut BitReader) -> Result<Self::Component, io::Error> {
             let sign = reader.read_bool()?;
             let diff = reader.read_bits(5)?;
-            let value = if sign {
-                old.0 + diff
-            } else {
-                old.0 - diff
-            };
+            let value = if sign { old.0 + diff } else { old.0 - diff };
 
             Ok(Self(value))
         }
@@ -440,10 +436,10 @@ mod tests {
     #[test]
     fn test_full() {
         let frame = NetworkFrame {
-            tick: 0, // 8 bits + 1 bit for delta frame bool + 8 bits for len = 17 bits
+            tick: 0,                                    // 8 bits + 1 bit for delta frame bool + 8 bits for len = 17 bits
             entities: vec![NetworkID(0), NetworkID(1)], // 2 * 12 = 24 bits
             // Changes: 2 * 1 = 2
-            simple: vec![Some(Simple(10)), None] // 1 full = 32 bits
+            simple: vec![Some(Simple(10)), None], // 1 full = 32 bits
         };
         // 17 + 24 + 2 + 32 = 75 bits written
 
@@ -455,7 +451,7 @@ mod tests {
         let mut reader = BitReader::new(&buffer).unwrap();
 
         let mut world = bevy::prelude::World::new();
-        let read_frame = NetworkFrame::read_frame(&mut reader,&mut  world).unwrap();
+        let read_frame = NetworkFrame::read_frame(&mut reader, &mut world).unwrap();
 
         assert_eq!(frame, read_frame);
     }
@@ -472,18 +468,23 @@ mod tests {
         let first_frame = NetworkFrame {
             tick: 0,
             entities: vec![NetworkID(0), NetworkID(1), NetworkID(2), NetworkID(3), NetworkID(4)],
-            simple: vec![Some(Simple(10)), Some(Simple(0)), Some(Simple(0)), None, Some(Simple(4))]
+            simple: vec![Some(Simple(10)), Some(Simple(0)), Some(Simple(0)), None, Some(Simple(4))],
         };
 
         let second_frame = NetworkFrame {
             tick: 0, // 8 bits + 1 bit for delta frame bool + 8 bits for delta tick + 8 bits for len = 25 bits
-            entities: vec![NetworkID(0), NetworkID(1), NetworkID(3), NetworkID(4), NetworkID(10), NetworkID(11)], // 12 * 6 = 72 bits 
-            simple: vec![ // Changes 2 * 6 = 12 bits
+            entities: vec![NetworkID(0), NetworkID(1), NetworkID(3), NetworkID(4), NetworkID(10), NetworkID(11)], // 12 * 6 = 72 bits
+            simple: vec![
+                // Changes 2 * 6 = 12 bits
                 // Already had entity
-                Some(Simple(16)), Some(Simple(100)), Some(Simple(3)), None, // 1 delta + 3 full = 6 bits + 3 * 32 bits = 102 bits
+                Some(Simple(16)),
+                Some(Simple(100)),
+                Some(Simple(3)),
+                None, // 1 delta + 3 full = 6 bits + 3 * 32 bits = 102 bits
                 // New entities
-                Some(Simple(50)), None
-            ]
+                Some(Simple(50)),
+                None,
+            ],
         };
         // 25 + 72 + 12 + 102 = 211 bits written
 
@@ -494,13 +495,13 @@ mod tests {
 
         let mut writer = BitWriter::with_capacity(100);
         second_frame.write_delta_frame(&mut writer, &first_frame).unwrap();
-        
+
         assert_eq!(writer.bits_written(), 211);
 
         let buffer = writer.consume().unwrap();
         let mut reader = BitReader::new(&buffer).unwrap();
 
-        let read_frame = NetworkFrame::read_frame(&mut reader,&mut  world).unwrap();
+        let read_frame = NetworkFrame::read_frame(&mut reader, &mut world).unwrap();
 
         assert_eq!(second_frame, read_frame);
     }

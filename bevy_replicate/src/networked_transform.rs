@@ -4,7 +4,6 @@ use bevy::prelude::*;
 use bit_serializer::{BitReader, BitWriter};
 use std::io;
 
-
 // TODO: add configuration as a resource in the world
 pub struct TransformNetworked;
 
