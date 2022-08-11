@@ -28,8 +28,8 @@ impl TryFrom<u8> for ComponentChange {
 }
 
 pub trait NetworkedFrame: std::fmt::Debug + Clone + Sized + Send + Sync + 'static {
-    fn tick(&self) -> u16;
-    fn generate_frame(tick: u16, world: &mut bevy::prelude::World) -> Self;
+    fn tick(&self) -> u64;
+    fn generate_frame(tick: u64, world: &mut bevy::prelude::World) -> Self;
     fn apply_in_world(&self, world: &mut bevy::prelude::World);
     fn write_full_frame(&self, writer: &mut BitWriter) -> Result<(), io::Error>;
     fn write_delta_frame(&self, writer: &mut BitWriter, delta_frame: &Self) -> Result<(), io::Error>;
@@ -61,7 +61,7 @@ macro_rules! network_frame {
         paste::paste! {
             #[derive(Debug, PartialEq, Clone)]
             pub struct NetworkFrame {
-                tick: u16,
+                tick: u64,
                 entities: Vec<$crate::NetworkID>,
                 $(
                     [<$type:snake:lower>]: Vec<Option<<$type as $crate::Networked>::Component>>,
@@ -69,11 +69,11 @@ macro_rules! network_frame {
             }
 
             impl $crate::NetworkedFrame for NetworkFrame {
-                fn tick(&self) -> u16 {
+                fn tick(&self) -> u64 {
                     self.tick
                 }
 
-                fn generate_frame(tick: u16, world: &mut $crate::bevy::prelude::World) -> Self {
+                fn generate_frame(tick: u64, world: &mut $crate::bevy::prelude::World) -> Self {
                     let entities = $crate::networked_entities(world);
                     $(
                         let [<$type:snake:lower>] = {
@@ -197,12 +197,12 @@ pub fn networked_entities(world: &mut bevy::prelude::World) -> Vec<NetworkID> {
     query.iter(world).copied().collect()
 }
 
-pub fn write_frame_header(writer: &mut BitWriter, tick: u16, delta_tick: Option<u16>, entities: &[NetworkID]) -> Result<(), io::Error> {
+pub fn write_frame_header(writer: &mut BitWriter, tick: u64, delta_tick: Option<u64>, entities: &[NetworkID]) -> Result<(), io::Error> {
     writer.write_bool(delta_tick.is_some())?;
     if let Some(delta_tick) = delta_tick {
-        writer.write_varint_u16(delta_tick)?;
+        writer.write_varint_u64(delta_tick)?;
     }
-    writer.write_varint_u16(tick)?;
+    writer.write_varint_u64(tick)?;
     writer.write_varint_u16(entities.len() as u16)?;
     for network_id in entities.iter() {
         writer.write_bits(network_id.0 as u32, 12)?;
@@ -213,15 +213,15 @@ pub fn write_frame_header(writer: &mut BitWriter, tick: u16, delta_tick: Option<
 
 #[derive(Debug)]
 pub struct FrameHeader {
-    pub tick: u16,
-    pub delta_tick: Option<u16>,
+    pub tick: u64,
+    pub delta_tick: Option<u64>,
     pub entities: Vec<NetworkID>,
 }
 
 pub fn read_frame_header(reader: &mut BitReader) -> Result<FrameHeader, io::Error> {
     let is_delta = reader.read_bool()?;
-    let delta_tick = if is_delta { Some(reader.read_varint_u16()?) } else { None };
-    let tick = reader.read_varint_u16()?;
+    let delta_tick = if is_delta { Some(reader.read_varint_u64()?) } else { None };
+    let tick = reader.read_varint_u64()?;
     let len = reader.read_varint_u16()? as usize;
     if len > network_entity::MAX_LENGTH {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "network entities length above limit"));

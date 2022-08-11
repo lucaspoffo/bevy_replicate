@@ -99,7 +99,7 @@ fn server_sync_players(
     // Update last received tick
     for client_id in server.clients_id().into_iter() {
         while let Some(message) = server.receive_message(client_id, DefaultChannel::Unreliable) {
-            let tick = u16::from_le_bytes(message.try_into().unwrap());
+            let tick = u64::from_le_bytes(message.try_into().unwrap());
             match last_received_tick.0.get_mut(&client_id) {
                 None => {
                     last_received_tick.0.insert(client_id, tick);

@@ -1,200 +1,164 @@
-#[derive(Debug)]
+use core::ops::Range;
+
+pub type SequenceNumber = u64;
+
 pub struct SequenceBuffer<T> {
-    sequence: u16,
-    entry_sequences: Box<[Option<u16>]>,
-    entries: Box<[Option<T>]>,
+    sequences: Box<[Option<SequenceNumber>]>,
+    data: Box<[Option<T>]>,
 }
 
 impl<T> SequenceBuffer<T> {
-    pub fn with_capacity(size: usize) -> Self {
-        assert!(size > 0, "tried to initialize SequenceBuffer with 0 size");
-        let mut entries = Vec::with_capacity(size);
-        for _ in 0..size {
-            entries.push(None);
+    pub fn with_capacity(capacity: usize) -> Self {
+        assert!(capacity > 0, "tried to initialize SequenceBuffer with 0 capacity");
+        let mut data = Vec::with_capacity(capacity);
+        for _ in 0..capacity {
+            data.push(None);
         }
 
         Self {
-            sequence: 0,
-            entry_sequences: vec![None; size].into_boxed_slice(),
-            entries: entries.into_boxed_slice(),
+            sequences: vec![None; capacity].into_boxed_slice(),
+            data: data.into_boxed_slice(),
         }
     }
 
     pub fn size(&self) -> usize {
-        self.entries.len()
+        self.sequences.len()
     }
 
-    pub fn get_mut(&mut self, sequence: u16) -> Option<&mut T> {
-        if self.exists(sequence) {
-            let index = self.index(sequence);
-            return self.entries[index].as_mut();
-        }
-        None
+    #[inline]
+    pub fn index_of(&self, sequence: SequenceNumber) -> usize {
+        sequence as usize % self.data.len()
+    }
+
+    pub fn contains(&self, sequence: SequenceNumber) -> bool {
+        self.sequences[self.index_of(sequence)] == Some(sequence)
     }
 
     #[allow(dead_code)]
-    pub fn get(&self, sequence: u16) -> Option<&T> {
-        if self.exists(sequence) {
-            let index = self.index(sequence);
-            return self.entries[index].as_ref();
+    pub fn get(&self, sequence: SequenceNumber) -> Option<&T> {
+        let index = self.index_of(sequence);
+        if self.sequences[index] == Some(sequence) {
+            self.data[index].as_ref()
+        } else {
+            None
         }
-        None
     }
 
-    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: u16, f: F) -> Option<&mut T> {
-        if self.exists(sequence) {
-            let index = self.index(sequence);
-            self.entries[index].as_mut()
+    pub fn get_mut(&mut self, sequence: SequenceNumber) -> Option<&mut T> {
+        let index = self.index_of(sequence);
+        if self.sequences[index] == Some(sequence) {
+            self.data[index].as_mut()
+        } else {
+            None
+        }
+    }
+
+    pub fn get_index(&self, index: usize) -> (&Option<SequenceNumber>, &Option<T>) {
+        (&self.sequences[index], &self.data[index])
+    }
+
+    pub fn get_index_mut(&mut self, index: usize) -> (&mut Option<SequenceNumber>, &mut Option<T>) {
+        (&mut self.sequences[index], &mut self.data[index])
+    }
+
+    pub fn get_or_insert(&mut self, sequence: SequenceNumber, data: T) -> &mut T {
+        if self.contains(sequence) {
+            self.get_mut(sequence).unwrap()
+        } else {
+            self.insert(sequence, data)
+        }
+    }
+
+    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: SequenceNumber, f: F) -> &mut T {
+        if self.contains(sequence) {
+            self.get_mut(sequence).unwrap()
         } else {
             self.insert(sequence, f())
         }
     }
 
-    #[inline]
-    pub fn index(&self, sequence: u16) -> usize {
-        sequence as usize % self.entries.len()
+    pub fn insert(&mut self, sequence: SequenceNumber, data: T) -> &mut T {
+        let index = self.index_of(sequence);
+        self.sequences[index] = Some(sequence);
+        self.data[index] = Some(data);
+        self.data[index].as_mut().unwrap()
     }
 
-    pub fn available(&self, sequence: u16) -> bool {
-        let index = self.index(sequence);
-        self.entry_sequences[index].is_none()
+    pub fn remove(&mut self, sequence: SequenceNumber) -> Option<T> {
+        let index = self.index_of(sequence);
+        self.sequences[index].take();
+        self.data[index].take()
     }
 
-    /// Returns whether or not we have previously inserted an entry for the given sequence number.
-    pub fn exists(&self, sequence: u16) -> bool {
-        let index = self.index(sequence);
-        if let Some(s) = self.entry_sequences[index] {
-            return s == sequence;
-        }
-        false
+    pub fn remove_index(&mut self, index: usize) -> (Option<SequenceNumber>, Option<T>) {
+        (self.sequences[index].take(), self.data[index].take())
     }
 
-    pub fn insert(&mut self, sequence: u16, data: T) -> Option<&mut T> {
-        if sequence_less_than(sequence, self.sequence.wrapping_sub(self.entry_sequences.len() as u16)) {
-            return None;
-        }
+    pub fn remove_range(&mut self, range: Range<SequenceNumber>) {
+        let start_idx = self.index_of(range.start);
+        let end_idx = self.index_of(range.end);
 
-        if sequence_greater_than(sequence.wrapping_add(1), self.sequence) {
-            self.remove_entries(u32::from(sequence));
-            self.sequence = sequence.wrapping_add(1);
-        }
-
-        let index = self.index(sequence);
-        self.entry_sequences[index] = Some(sequence);
-        self.entries[index] = Some(data);
-        self.entries[index].as_mut()
-    }
-
-    fn remove_entries(&mut self, mut finish_sequence: u32) {
-        let start_sequence = u32::from(self.sequence);
-        if finish_sequence < start_sequence {
-            finish_sequence += 65536;
-        }
-
-        if finish_sequence - start_sequence < self.entry_sequences.len() as u32 {
-            for sequence in start_sequence..=finish_sequence {
-                self.remove(sequence as u16);
+        if end_idx < start_idx {
+            for index in start_idx..=end_idx {
+                self.remove(index as u64);
             }
         } else {
-            for index in 0..self.entry_sequences.len() {
-                self.entries[index] = None;
-                self.entry_sequences[index] = None;
+            for index in 0..self.data.len() {
+                self.data[index] = None;
+                self.sequences[index] = None;
             }
         }
     }
 
-    pub fn remove(&mut self, sequence: u16) -> Option<T> {
-        if self.exists(sequence) {
-            let index = self.index(sequence);
-            self.entry_sequences[index] = None;
-            let value = self.entries[index].take();
-            return value;
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+        let current: u64 = self.sequences.iter().filter_map(|&s| s).min().unwrap_or(0);
+
+        Iter {
+            inner: &self,
+            start: current,
+            current,
         }
+    }
+}
+
+pub struct Iter<'a, T: 'a> {
+    inner: &'a SequenceBuffer<T>,
+    current: SequenceNumber,
+    start: SequenceNumber,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current < self.start + self.inner.size() as u64 {
+            if self.inner.contains(self.current) {
+                let item = self.inner.get(self.current);
+                self.current += 1;
+                return item;
+            }
+
+            self.current += 1;
+        }
+
         None
     }
-
-    #[inline]
-    pub fn sequence(&self) -> u16 {
-        self.sequence
-    }
-}
-
-// Since sequences can wrap we need to check when this when checking greater
-// Ocurring the cutover in the middle of u16
-#[inline]
-pub fn sequence_greater_than(s1: u16, s2: u16) -> bool {
-    ((s1 > s2) && (s1 - s2 <= 32768)) || ((s1 < s2) && (s2 - s1 > 32768))
-}
-
-#[inline]
-pub fn sequence_less_than(s1: u16, s2: u16) -> bool {
-    sequence_greater_than(s2, s1)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SequenceBuffer;
-
-    #[derive(Clone, Default)]
-    struct DataStub;
+    use super::*;
 
     #[test]
-    fn max_sequence_not_exists_by_default() {
-        let buffer: SequenceBuffer<DataStub> = SequenceBuffer::with_capacity(8);
-        assert!(!buffer.exists(u16::max_value()));
-    }
+    fn iter() {
+        let mut buffer: SequenceBuffer<u16> = SequenceBuffer::with_capacity(10);
 
-    #[test]
-    fn insert() {
-        let mut buffer = SequenceBuffer::with_capacity(2);
-        buffer.insert(0, DataStub).unwrap();
-        assert!(buffer.exists(0));
-    }
+        buffer.insert(3, 3);
+        buffer.insert(5, 5);
+        buffer.insert(10, 10);
 
-    #[test]
-    fn remove() {
-        let mut buffer = SequenceBuffer::with_capacity(2);
-        buffer.insert(0, DataStub).unwrap();
-        let removed = buffer.remove(0);
-        assert!(removed.is_some());
-        assert!(!buffer.exists(0));
-    }
+        let iter: Vec<u16> = buffer.iter().copied().collect();
 
-    fn count_entries(buffer: &SequenceBuffer<DataStub>) -> usize {
-        buffer.entry_sequences.iter().flatten().count()
-    }
-
-    #[test]
-    fn insert_over_older_entries() {
-        let mut buffer = SequenceBuffer::with_capacity(8);
-        buffer.insert(8, DataStub).unwrap();
-        buffer.insert(0, DataStub);
-        assert!(!buffer.exists(0));
-
-        buffer.insert(16, DataStub);
-        assert!(buffer.exists(16));
-
-        assert_eq!(count_entries(&buffer), 1);
-    }
-
-    #[test]
-    fn insert_old_entries() {
-        let mut buffer = SequenceBuffer::with_capacity(8);
-        buffer.insert(11, DataStub);
-        buffer.insert(2, DataStub);
-        assert!(!buffer.exists(2));
-
-        buffer.insert(u16::max_value(), DataStub);
-        assert!(!buffer.exists(u16::max_value()));
-
-        assert_eq!(count_entries(&buffer), 1);
-    }
-
-    #[test]
-    fn available() {
-        let mut buffer = SequenceBuffer::with_capacity(2);
-        buffer.insert(0, DataStub).unwrap();
-        buffer.insert(1, DataStub).unwrap();
-        assert!(!buffer.available(2));
+        assert_eq!(iter, vec![3, 5, 10]);
     }
 }
