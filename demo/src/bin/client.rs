@@ -4,7 +4,7 @@ use bevy_renet::{
     renet::{ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig},
     run_if_client_connected, RenetClientPlugin,
 };
-use bevy_replicate::{process_snap, LastReceivedNetworkTick, ReplicateClientPlugin};
+use bevy_replicate::{networked_transform::interpolate_transform_system, process_snap, LastReceivedNetworkTick, ReplicateClientPlugin};
 use demo::{panic_on_error_system, setup, NetworkFrame, Player, PlayerInput, PROTOCOL_ID};
 use renet_visualizer::RenetClientVisualizer;
 
@@ -43,6 +43,7 @@ fn main() {
     app.add_system(update_client_visulizer_system);
 
     app.add_plugin(ReplicateClientPlugin::<NetworkFrame>::default());
+    app.add_system(interpolate_transform_system);
     app.add_system_to_stage(CoreStage::PreUpdate, read_network_frame.exclusive_system().at_end());
 
     app.add_startup_system(setup);

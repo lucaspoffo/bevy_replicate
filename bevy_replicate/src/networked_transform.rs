@@ -1,11 +1,17 @@
-use crate::network_frame::Networked;
+use crate::{network_frame::Networked, TickInterpolation};
 
-use bevy::prelude::*;
+use bevy::{ecs::world::EntityMut, prelude::*};
 use bit_serializer::{BitReader, BitWriter};
 use std::io;
 
 // TODO: add configuration as a resource in the world
 pub struct TransformNetworked;
+
+#[derive(Debug, Component)]
+pub struct InterpolateTransform {
+    from: Transform,
+    to: Transform,
+}
 
 impl Networked for TransformNetworked {
     type Component = Transform;
@@ -61,6 +67,24 @@ impl Networked for TransformNetworked {
             rotation,
             scale,
         })
+    }
+
+    fn apply(mut entity_mut: EntityMut<'_>, component: &Self::Component) {
+        let from = match entity_mut.get::<Transform>() {
+            Some(t) => *t,
+            None => *component,
+        };
+
+        entity_mut.insert(InterpolateTransform { from, to: *component });
+    }
+}
+
+pub fn interpolate_transform_system(interpolation: Res<TickInterpolation>, mut query: Query<(&mut Transform, &InterpolateTransform)>) {
+    let t = interpolation.0;
+    for (mut transform, interpolate) in query.iter_mut() {
+        transform.translation = interpolate.from.translation.lerp(interpolate.to.translation, t);
+        transform.scale = interpolate.from.scale.lerp(interpolate.to.scale, t);
+        transform.rotation = interpolate.from.rotation.slerp(interpolate.to.rotation, t);
     }
 }
 

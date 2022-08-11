@@ -125,5 +125,7 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
         let y = (input.down as i8 - input.up as i8) as f32;
         transform.translation.x += x * PLAYER_MOVE_SPEED * time.delta().as_secs_f32();
         transform.translation.z += y * PLAYER_MOVE_SPEED * time.delta().as_secs_f32();
+
+        transform.rotate_x(std::f32::consts::PI / 4. * time.delta_seconds());
     }
 }

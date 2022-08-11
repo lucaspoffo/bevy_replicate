@@ -1,3 +1,4 @@
+use bevy::ecs::world::EntityMut;
 use bit_serializer::{BitReader, BitWriter};
 use std::{collections::HashMap, io};
 
@@ -53,6 +54,10 @@ pub trait Networked {
 
     fn write_full(component: &Self::Component, writer: &mut BitWriter) -> Result<(), io::Error>;
     fn read_full(reader: &mut BitReader) -> Result<Self::Component, io::Error>;
+
+    fn apply(mut entity_mut: EntityMut<'_>, component: &Self::Component) {
+        entity_mut.insert(component.clone());
+    }
 }
 
 #[macro_export]
@@ -116,8 +121,9 @@ macro_rules! network_frame {
                                 if let Some(component) = &self.[<$type:snake:lower>][i] {
                                     // Should always exist a mapped entity by now
                                     let mapped_entity = mapping.0.get(network_id).unwrap();
-                                    let mut entity_mut = world.entity_mut(*mapped_entity);
-                                    entity_mut.insert(component.clone());
+                                    let entity_mut = world.entity_mut(*mapped_entity);
+                                    <$type as $crate::Networked>::apply(entity_mut, component);
+                                    // entity_mut.insert(component.clone());
                                 }
                             }
                         )*

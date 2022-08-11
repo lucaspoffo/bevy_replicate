@@ -24,7 +24,7 @@ pub struct LastNetworkTick(pub HashMap<u64, u64>);
 
 pub struct LastReceivedNetworkTick(pub Option<u64>);
 
-pub struct TickInterpolation(pub f64);
+pub struct TickInterpolation(pub f32);
 
 #[derive(Debug, Default)]
 struct ClientInfo {
@@ -57,7 +57,7 @@ impl<T: NetworkedFrame> Plugin for ReplicateServerPlugin<T> {
         app.insert_resource(NetworkTick(0));
         app.insert_resource(LastNetworkTick(HashMap::new()));
 
-        let buffer: SequenceBuffer<T> = SequenceBuffer::with_capacity(60);
+        let buffer: SequenceBuffer<T> = SequenceBuffer::with_capacity(30);
         app.insert_resource(NetworkFrameBuffer(buffer));
 
         app.add_system_to_stage(
@@ -120,8 +120,6 @@ pub fn replicate<T: NetworkedFrame>(
     writer.consume()
 }
 
-// TODO: maybe add an event with the buffer, add then renet can just emit the buffer there,
-// and we can add this as a system in the client plugin
 pub fn process_snap<T: NetworkedFrame>(buffer: Vec<u8>, world: &mut World) -> Result<(), io::Error> {
     let mut reader = BitReader::new(&buffer)?;
     let frame = T::read_frame(&mut reader, world)?;
@@ -158,9 +156,14 @@ fn update_info<T: NetworkedFrame>(world: &mut World) {
             info.desired_playback_time = (last_received_tick as u32 * info.tick_duration).saturating_sub(info.desired_delay);
         }
 
-        println!("{:?}", info);
+        if let (Some(last_applied), Some(last_received)) = (info.last_applied_tick, info.last_received_tick) {
+            if last_received - last_applied > 10 {
+                println!("received: {}, applied: {}", last_received, last_applied);
+            }
+        }
 
-        let scale: f64 = if info.desired_playback_time < info.current_playback_time {
+
+        let scale: f64 = if info.desired_playback_time > info.current_playback_time {
             1.02
         } else if info
             .desired_playback_time
@@ -174,13 +177,12 @@ fn update_info<T: NetworkedFrame>(world: &mut World) {
         };
 
         info.current_playback_time += time.delta().mul_f64(scale);
+
         let snapshot_times: Vec<(u64, Duration)> = buffer
             .0
             .iter()
             .map(|snap| (snap.tick(), snap.tick() as u32 * info.tick_duration))
             .collect();
-
-        println!("{:?}", snapshot_times);
 
         if snapshot_times.len() == 0 {
             return;
@@ -201,13 +203,12 @@ fn update_info<T: NetworkedFrame>(world: &mut World) {
             (snapshot_times[i].0, fract / whole)
         };
 
-        tick_interpolation.0 = interpolation;
+        tick_interpolation.0 = interpolation as f32;
 
         tick
     };
 
     let last_applied_tick = { world.resource::<ClientInfo>().last_applied_tick.clone() };
-
     let apply_tick = match last_applied_tick {
         None => true,
         Some(last_applied_tick) => last_applied_tick != tick,
@@ -245,11 +246,11 @@ impl<T: NetworkedFrame> Plugin for ReplicateClientPlugin<T> {
 
         app.insert_resource(ClientInfo {
             tick_duration: Duration::from_secs_f64(1. / self.tick_rate),
-            desired_delay: Duration::from_millis(150),
+            desired_delay: Duration::from_millis(100),
             ..default()
         });
 
-        let buffer: SequenceBuffer<T> = SequenceBuffer::with_capacity(60);
+        let buffer: SequenceBuffer<T> = SequenceBuffer::with_capacity(30);
         app.insert_resource(NetworkFrameBuffer(buffer));
 
         app.add_system_to_stage(

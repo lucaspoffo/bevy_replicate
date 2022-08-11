@@ -160,5 +160,15 @@ mod tests {
         let iter: Vec<u16> = buffer.iter().copied().collect();
 
         assert_eq!(iter, vec![3, 5, 10]);
+
+
+        let mut buffer: SequenceBuffer<u64> = SequenceBuffer::with_capacity(10);
+
+        for i in 0..100 {
+            buffer.insert(i, i as u64);
+        }
+
+        let iter: Vec<u64> = buffer.iter().copied().collect();
+        assert_eq!(iter, vec![90, 91, 92, 93, 94, 95, 96, 97, 98, 99]);
     }
 }
