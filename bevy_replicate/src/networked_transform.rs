@@ -1,10 +1,10 @@
-use crate::{network_frame::Networked, TickInterpolation};
+use crate::{network_frame::Networked, client::TickInterpolation};
 
 use bevy::{ecs::world::EntityMut, prelude::*};
 use bit_serializer::{BitReader, BitWriter};
 use std::io;
 
-// TODO: add configuration as a resource in the world
+// TODO: add configuration
 pub struct TransformNetworked;
 
 #[derive(Debug, Component)]
@@ -20,11 +20,13 @@ impl Networked for TransformNetworked {
         true
     }
 
-    fn write_delta(&_old: &Self::Component, new: &Self::Component, writer: &mut BitWriter) -> Result<(), io::Error> {
+    fn write_delta(_old: &Self::Component, new: &Self::Component, writer: &mut BitWriter) -> Result<(), io::Error> {
+        // TODO: still need to impl the delta
         Self::write_full(new, writer)
     }
 
     fn read_delta(_old: &Self::Component, reader: &mut BitReader) -> Result<Self::Component, io::Error> {
+        // TODO: still need to impl the delta
         Self::read_full(reader)
     }
 
@@ -72,7 +74,10 @@ impl Networked for TransformNetworked {
     fn apply(mut entity_mut: EntityMut<'_>, component: &Self::Component) {
         let from = match entity_mut.get::<Transform>() {
             Some(t) => *t,
-            None => *component,
+            None => {
+                entity_mut.insert(*component);
+                *component
+            }
         };
 
         entity_mut.insert(InterpolateTransform { from, to: *component });

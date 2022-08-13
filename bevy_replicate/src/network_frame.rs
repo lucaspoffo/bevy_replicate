@@ -96,7 +96,7 @@ macro_rules! network_frame {
 
 
                 fn apply_in_world(&self, world: &mut $crate::bevy::prelude::World) {
-                    world.resource_scope(|world, mut mapping: $crate::bevy::prelude::Mut<$crate::NetworkMapping>| {
+                    world.resource_scope(|world, mut mapping: $crate::bevy::prelude::Mut<$crate::client::NetworkMapping>| {
                         // Remove entities
                         mapping.0.retain(|network_id, entity| {
                             let removed = !self.entities.contains(network_id);
@@ -130,7 +130,7 @@ macro_rules! network_frame {
                     });
                 }
 
-                fn write_full_frame(&self, writer: &mut $crate::bit_serializer::BitWriter) -> Result<(), std::io::Error> {
+                fn write_full_frame(&self, writer: &mut $crate::BitWriter) -> Result<(), std::io::Error> {
                     $crate::write_frame_header(writer, self.tick, None, &self.entities)?;
 
                     $(
@@ -140,7 +140,7 @@ macro_rules! network_frame {
                     Ok(())
                 }
 
-                fn write_delta_frame(&self, writer: &mut $crate::bit_serializer::BitWriter, delta_frame: &Self) -> Result<(), std::io::Error> {
+                fn write_delta_frame(&self, writer: &mut $crate::BitWriter, delta_frame: &Self) -> Result<(), std::io::Error> {
                     $crate::write_frame_header(writer, self.tick, Some(delta_frame.tick), &self.entities)?;
                     let delta_mapping = $crate::generate_delta_mapping(&delta_frame.entities, &self.entities);
 
@@ -157,7 +157,7 @@ macro_rules! network_frame {
                     Ok(())
                 }
 
-                fn read_frame(reader: &mut $crate::bit_serializer::BitReader, world: &mut $crate::bevy::prelude::World) -> Result<Self, std::io::Error> {
+                fn read_frame(reader: &mut $crate::BitReader, world: &mut $crate::bevy::prelude::World) -> Result<Self, std::io::Error> {
                     let header = $crate::read_frame_header(reader)?;
                     if let Some(delta_tick) = header.delta_tick {
                         let frame_buffer = world.get_resource::<$crate::NetworkFrameBuffer<Self>>().unwrap();

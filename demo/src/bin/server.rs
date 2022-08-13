@@ -4,7 +4,10 @@ use bevy_renet::{
     renet::{DefaultChannel, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent},
     RenetServerPlugin,
 };
-use bevy_replicate::{network_entity::NetworkEntities, replicate, LastNetworkTick, NetworkFrameBuffer, NetworkTick, ReplicateServerPlugin};
+use bevy_replicate::{
+    NetworkEntities, NetworkFrameBuffer,
+    server::{replicate, LastNetworkTick, NetworkTick, ReplicateServerPlugin},
+};
 
 use demo::{panic_on_error_system, setup, NetworkFrame, Player, PlayerInput, PROTOCOL_ID};
 
@@ -114,7 +117,7 @@ fn server_sync_players(
     }
 
     for client_id in server.clients_id().into_iter() {
-        let message = replicate::<NetworkFrame>(client_id, &network_tick, &network_buffer, &last_received_tick).unwrap();
+        let message = replicate::<NetworkFrame>(client_id, &network_tick, &last_received_tick, &network_buffer).unwrap();
         server.send_message(client_id, DefaultChannel::Unreliable, message);
     }
 }

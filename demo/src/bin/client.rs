@@ -4,7 +4,10 @@ use bevy_renet::{
     renet::{ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig},
     run_if_client_connected, RenetClientPlugin,
 };
-use bevy_replicate::{networked_transform::interpolate_transform_system, process_snap, LastReceivedNetworkTick, ReplicateClientPlugin};
+use bevy_replicate::{
+    client::{LastReceivedNetworkTick, ReplicateClientPlugin, process_snapshot},
+    networked_transform::interpolate_transform_system,
+};
 use demo::{panic_on_error_system, setup, NetworkFrame, Player, PlayerInput, PROTOCOL_ID};
 use renet_visualizer::RenetClientVisualizer;
 
@@ -55,7 +58,7 @@ fn main() {
 fn read_network_frame(world: &mut World) {
     world.resource_scope(|world, mut client: Mut<RenetClient>| {
         while let Some(message) = client.receive_message(DefaultChannel::Unreliable) {
-            process_snap::<NetworkFrame>(message, world).unwrap();
+            process_snapshot::<NetworkFrame>(message, world).unwrap();
         }
     });
 }

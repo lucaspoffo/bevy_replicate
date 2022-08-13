@@ -61,27 +61,32 @@ impl<T> SequenceBuffer<T> {
         (&mut self.sequences[index], &mut self.data[index])
     }
 
-    pub fn get_or_insert(&mut self, sequence: SequenceNumber, data: T) -> &mut T {
+    pub fn get_or_insert(&mut self, sequence: SequenceNumber, data: T) -> Option<&mut T> {
         if self.contains(sequence) {
-            self.get_mut(sequence).unwrap()
+            self.get_mut(sequence)
         } else {
             self.insert(sequence, data)
         }
     }
 
-    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: SequenceNumber, f: F) -> &mut T {
+    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: SequenceNumber, f: F) -> Option<&mut T> {
         if self.contains(sequence) {
-            self.get_mut(sequence).unwrap()
+            self.get_mut(sequence)
         } else {
             self.insert(sequence, f())
         }
     }
 
-    pub fn insert(&mut self, sequence: SequenceNumber, data: T) -> &mut T {
+    pub fn insert(&mut self, sequence: SequenceNumber, data: T) -> Option<&mut T> {
         let index = self.index_of(sequence);
+        if let Some(current_sequence) = self.sequences[index] {
+            if sequence < current_sequence {
+                return None;
+            }
+        }
         self.sequences[index] = Some(sequence);
         self.data[index] = Some(data);
-        self.data[index].as_mut().unwrap()
+        self.data[index].as_mut()
     }
 
     pub fn remove(&mut self, sequence: SequenceNumber) -> Option<T> {
@@ -110,65 +115,7 @@ impl<T> SequenceBuffer<T> {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
-        let current: u64 = self.sequences.iter().filter_map(|&s| s).min().unwrap_or(0);
-
-        Iter {
-            inner: &self,
-            start: current,
-            current,
-        }
-    }
-}
-
-pub struct Iter<'a, T: 'a> {
-    inner: &'a SequenceBuffer<T>,
-    current: SequenceNumber,
-    start: SequenceNumber,
-}
-
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.current < self.start + self.inner.size() as u64 {
-            if self.inner.contains(self.current) {
-                let item = self.inner.get(self.current);
-                self.current += 1;
-                return item;
-            }
-
-            self.current += 1;
-        }
-
-        None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn iter() {
-        let mut buffer: SequenceBuffer<u16> = SequenceBuffer::with_capacity(10);
-
-        buffer.insert(3, 3);
-        buffer.insert(5, 5);
-        buffer.insert(10, 10);
-
-        let iter: Vec<u16> = buffer.iter().copied().collect();
-
-        assert_eq!(iter, vec![3, 5, 10]);
-
-
-        let mut buffer: SequenceBuffer<u64> = SequenceBuffer::with_capacity(10);
-
-        for i in 0..100 {
-            buffer.insert(i, i as u64);
-        }
-
-        let iter: Vec<u64> = buffer.iter().copied().collect();
-        assert_eq!(iter, vec![90, 91, 92, 93, 94, 95, 96, 97, 98, 99]);
+    pub fn entries(&self) -> &[Option<T>] {
+        &self.data
     }
 }
