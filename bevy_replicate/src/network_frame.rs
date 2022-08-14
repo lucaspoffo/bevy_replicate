@@ -1,4 +1,5 @@
 use bevy::ecs::world::EntityMut;
+use bevy::prelude::*;
 use bit_serializer::{BitReader, BitWriter};
 use std::{collections::HashMap, io};
 
@@ -37,7 +38,7 @@ pub trait NetworkedFrame: std::fmt::Debug + Clone + Sized + Send + Sync + 'stati
     fn read_frame(reader: &mut BitReader, world: &mut bevy::prelude::World) -> Result<Self, io::Error>;
 }
 
-pub trait Networked {
+pub trait NetworkedComponent {
     type Component: bevy::prelude::Component + PartialEq + Clone + std::fmt::Debug;
 
     fn can_delta(_old: &Self::Component, _new: &Self::Component) -> bool {
@@ -69,7 +70,7 @@ macro_rules! network_frame {
                 tick: u64,
                 entities: Vec<$crate::NetworkID>,
                 $(
-                    [<$type:snake:lower>]: Vec<Option<<$type as $crate::Networked>::Component>>,
+                    [<$type:snake:lower>]: Vec<Option<<$type as $crate::NetworkedComponent>::Component>>,
                 )*
             }
 
@@ -81,10 +82,7 @@ macro_rules! network_frame {
                 fn generate_frame(tick: u64, world: &mut $crate::bevy::prelude::World) -> Self {
                     let entities = $crate::networked_entities(world);
                     $(
-                        let [<$type:snake:lower>] = {
-                            let mut query = world.query_filtered::<Option<&<$type as $crate::Networked>::Component>, $crate::bevy::prelude::With<$crate::NetworkID>>();
-                            query.iter(world).map(|c| c.cloned()).collect()
-                        };
+                        let [<$type:snake:lower>] = $crate::networked_components::<$type>(world);
                     )*
 
                     Self {
@@ -122,8 +120,7 @@ macro_rules! network_frame {
                                     // Should always exist a mapped entity by now
                                     let mapped_entity = mapping.0.get(network_id).unwrap();
                                     let entity_mut = world.entity_mut(*mapped_entity);
-                                    <$type as $crate::Networked>::apply(entity_mut, component);
-                                    // entity_mut.insert(component.clone());
+                                    <$type as $crate::NetworkedComponent>::apply(entity_mut, component);
                                 }
                             }
                         )*
@@ -198,9 +195,14 @@ macro_rules! network_frame {
     }
 }
 
-pub fn networked_entities(world: &mut bevy::prelude::World) -> Vec<NetworkID> {
+pub fn networked_entities(world: &mut World) -> Vec<NetworkID> {
     let mut query = world.query::<&NetworkID>();
     query.iter(world).copied().collect()
+}
+
+pub fn networked_components<T: NetworkedComponent>(world: &mut World) -> Vec<Option<T::Component>> {
+    let mut query = world.query_filtered::<Option<&T::Component>, With<NetworkID>>();
+    query.iter(world).map(|c| c.cloned()).collect()
 }
 
 pub fn write_frame_header(writer: &mut BitWriter, tick: u64, delta_tick: Option<u64>, entities: &[NetworkID]) -> Result<(), io::Error> {
@@ -226,7 +228,14 @@ pub struct FrameHeader {
 
 pub fn read_frame_header(reader: &mut BitReader) -> Result<FrameHeader, io::Error> {
     let is_delta = reader.read_bool()?;
-    let delta_tick = if is_delta { Some(reader.read_varint_u64()?) } else { None };
+
+    let delta_tick = if is_delta {
+        let delta_tick = reader.read_varint_u64()?;
+        Some(delta_tick)
+    } else {
+        None
+    };
+
     let tick = reader.read_varint_u64()?;
     let len = reader.read_varint_u16()? as usize;
     if len > network_entity::MAX_LENGTH {
@@ -246,7 +255,7 @@ pub fn read_frame_header(reader: &mut BitReader) -> Result<FrameHeader, io::Erro
     })
 }
 
-pub fn write_full_component<T: Networked>(writer: &mut BitWriter, components: &[Option<T::Component>]) -> Result<(), io::Error> {
+pub fn write_full_component<T: NetworkedComponent>(writer: &mut BitWriter, components: &[Option<T::Component>]) -> Result<(), io::Error> {
     for component in components.iter() {
         writer.write_bool(component.is_some())?;
     }
@@ -260,7 +269,10 @@ pub fn write_full_component<T: Networked>(writer: &mut BitWriter, components: &[
     Ok(())
 }
 
-pub fn read_full_component<T: Networked>(reader: &mut BitReader, entities_len: usize) -> Result<Vec<Option<T::Component>>, io::Error> {
+pub fn read_full_component<T: NetworkedComponent>(
+    reader: &mut BitReader,
+    entities_len: usize,
+) -> Result<Vec<Option<T::Component>>, io::Error> {
     let mut has_components = Vec::with_capacity(entities_len);
     for _ in 0..entities_len {
         let has_component = reader.read_bool()?;
@@ -290,7 +302,7 @@ pub fn generate_delta_mapping(previous_entities: &[NetworkID], current_entities:
     map
 }
 
-pub fn write_delta_component<T: Networked>(
+pub fn write_delta_component<T: NetworkedComponent>(
     writer: &mut BitWriter,
     entities: &[NetworkID],
     current_components: &[Option<T::Component>],
@@ -337,7 +349,7 @@ pub fn write_delta_component<T: Networked>(
     Ok(())
 }
 
-pub fn read_delta_component<T: Networked>(
+pub fn read_delta_component<T: NetworkedComponent>(
     reader: &mut BitReader,
     entities: &[NetworkID],
     previous_components: &[Option<T::Component>],
@@ -398,7 +410,7 @@ mod tests {
     #[derive(Debug, Component, PartialEq, Eq, Clone)]
     struct Simple(u32);
 
-    impl Networked for Simple {
+    impl NetworkedComponent for Simple {
         type Component = Self;
 
         fn can_delta(old: &Self::Component, new: &Self::Component) -> bool {

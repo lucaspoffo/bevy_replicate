@@ -5,7 +5,7 @@ use bevy_renet::{
     run_if_client_connected, RenetClientPlugin,
 };
 use bevy_replicate::{
-    client::{LastReceivedNetworkTick, ReplicateClientPlugin, process_snapshot},
+    client::{process_snapshot, LastReceivedNetworkTick, ReplicateClientPlugin},
     networked_transform::interpolate_transform_system,
 };
 use demo::{panic_on_error_system, setup, NetworkFrame, Player, PlayerInput, PROTOCOL_ID};

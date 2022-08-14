@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_renet::renet::RenetError;
-use bevy_replicate::{network_frame, networked_transform::TransformNetworked, Networked};
+use bevy_replicate::{network_frame, networked_transform::TransformNetworked, NetworkedComponent};
 use bit_serializer::{BitReader, BitWriter};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub struct PlayerInput {
 #[derive(Debug, Component, PartialEq, Eq, Clone)]
 pub struct Player(pub u64);
 
-impl Networked for Player {
+impl NetworkedComponent for Player {
     type Component = Self;
 
     fn write_full(component: &Self::Component, writer: &mut BitWriter) -> Result<(), std::io::Error> {

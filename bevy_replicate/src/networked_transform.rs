@@ -1,4 +1,4 @@
-use crate::{network_frame::Networked, client::NetworkInterpolation};
+use crate::{client::NetworkInterpolation, network_frame::NetworkedComponent};
 
 use bevy::{ecs::world::EntityMut, prelude::*};
 use bit_serializer::{BitReader, BitWriter};
@@ -13,7 +13,7 @@ pub struct InterpolateTransform {
     to: Transform,
 }
 
-impl Networked for TransformNetworked {
+impl NetworkedComponent for TransformNetworked {
     type Component = Transform;
 
     fn can_delta(_old: &Self::Component, _new: &Self::Component) -> bool {

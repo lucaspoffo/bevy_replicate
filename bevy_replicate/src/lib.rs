@@ -9,7 +9,6 @@ pub mod server;
 pub use bevy;
 pub use bit_serializer::{BitReader, BitWriter};
 
-pub use network_entity::{NetworkID, NetworkEntities};
-pub use network_frame::*;
+pub use network_entity::{NetworkEntities, NetworkID};
 
-pub struct NetworkFrameBuffer<T>(pub sequence_buffer::SequenceBuffer<T>);
+pub use network_frame::*;
