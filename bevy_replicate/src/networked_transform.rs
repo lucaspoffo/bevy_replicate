@@ -2,8 +2,8 @@ use crate::{client::NetworkInterpolation, network_frame::NetworkedComponent};
 
 use bevy::{ecs::world::EntityMut, prelude::*};
 use bit_serializer::{BitReader, BitWriter};
-use std::io;
 use std::f32::consts::FRAC_1_SQRT_2;
+use std::io;
 
 // TODO: add configuration
 pub struct TransformNetworked;

@@ -71,6 +71,7 @@ pub fn replicate<T: NetworkedFrame>(
     buffer: &NetworkFrameBuffer<T>,
 ) -> Result<Vec<u8>, io::Error> {
     // TODO: add cache for full frame or generating a frame with the same delta_tick
+    // struct DeltaCache(HashMap<delta_tick, Bytes>), return Bytes instead of Vec<u8>
     let mut writer = BitWriter::with_capacity(1000);
     let frame = buffer.0.get(tick.0).unwrap();
     if let Some(last_received_tick) = last_ticks.0.get(&client) {

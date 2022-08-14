@@ -72,7 +72,7 @@ pub trait NetworkedComponent {
 //    component_b: Vec<Option<ComponentA>>
 // }
 //
-// Instead of Vec<(NetworkID, ComponentA, ComponentB)> we store them in separeted vecs,
+// Instead of Vec<(NetworkID, Option<ComponentA>, Option<ComponentB>)> we store them in separeted vecs,
 // Easier to get and apply with ecs.
 #[macro_export]
 macro_rules! network_frame {
