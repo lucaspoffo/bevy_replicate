@@ -1,13 +1,15 @@
 use crate::{
     network_entity::{cleanup_network_entity_system, track_network_entity_system, NetworkEntities},
     sequence_buffer::SequenceBuffer,
-    NetworkFrameBuffer, NetworkedFrame,
+    NetworkedFrame,
 };
 use bevy::{prelude::*, time::FixedTimestep};
 use bit_serializer::BitWriter;
 use std::{collections::HashMap, io, marker::PhantomData};
 
 pub struct NetworkTick(pub u64);
+
+pub struct NetworkFrameBuffer<T>(pub SequenceBuffer<T>);
 
 pub struct LastNetworkTick(pub HashMap<u64, u64>);
 

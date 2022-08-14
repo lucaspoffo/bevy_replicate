@@ -2,6 +2,7 @@ use core::ops::Range;
 
 pub type SequenceNumber = u64;
 
+#[derive(Debug)]
 pub struct SequenceBuffer<T> {
     sequences: Box<[Option<SequenceNumber>]>,
     data: Box<[Option<T>]>,

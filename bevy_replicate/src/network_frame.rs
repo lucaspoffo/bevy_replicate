@@ -160,8 +160,8 @@ macro_rules! network_frame {
                 fn read_frame(reader: &mut $crate::BitReader, world: &mut $crate::bevy::prelude::World) -> Result<Self, std::io::Error> {
                     let header = $crate::read_frame_header(reader)?;
                     if let Some(delta_tick) = header.delta_tick {
-                        let frame_buffer = world.get_resource::<$crate::NetworkFrameBuffer<Self>>().unwrap();
-                        if let Some(delta_frame) = frame_buffer.0.get(delta_tick) {
+                        let frame_buffer = world.resource::<$crate::client::SnapshotInterpolationBuffer<Self>>();
+                        if let Some(delta_frame) = frame_buffer.buffer.get(delta_tick) {
                             let delta_mapping = $crate::generate_delta_mapping(&delta_frame.entities, &header.entities);
                             $(
                                 let [<$type:snake:lower>] = $crate::read_delta_component::<$type>(
@@ -398,7 +398,7 @@ pub fn read_delta_component<T: Networked>(
 mod tests {
     use bevy::prelude::Component;
 
-    use crate::{sequence_buffer::SequenceBuffer, NetworkFrameBuffer};
+    use crate::{sequence_buffer::SequenceBuffer, server::NetworkFrameBuffer};
 
     use super::*;
 

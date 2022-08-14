@@ -5,8 +5,8 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use bevy_replicate::{
-    NetworkEntities, NetworkFrameBuffer,
-    server::{replicate, LastNetworkTick, NetworkTick, ReplicateServerPlugin},
+    NetworkEntities,
+    server::{replicate, NetworkFrameBuffer, LastNetworkTick, NetworkTick, ReplicateServerPlugin},
 };
 
 use demo::{panic_on_error_system, setup, NetworkFrame, Player, PlayerInput, PROTOCOL_ID};

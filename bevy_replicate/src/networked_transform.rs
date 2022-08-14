@@ -1,4 +1,4 @@
-use crate::{network_frame::Networked, client::TickInterpolation};
+use crate::{network_frame::Networked, client::NetworkInterpolation};
 
 use bevy::{ecs::world::EntityMut, prelude::*};
 use bit_serializer::{BitReader, BitWriter};
@@ -84,7 +84,7 @@ impl Networked for TransformNetworked {
     }
 }
 
-pub fn interpolate_transform_system(interpolation: Res<TickInterpolation>, mut query: Query<(&mut Transform, &InterpolateTransform)>) {
+pub fn interpolate_transform_system(interpolation: Res<NetworkInterpolation>, mut query: Query<(&mut Transform, &InterpolateTransform)>) {
     let t = interpolation.0;
     for (mut transform, interpolate) in query.iter_mut() {
         transform.translation = interpolate.from.translation.lerp(interpolate.to.translation, t);
