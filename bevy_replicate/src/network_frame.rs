@@ -61,6 +61,19 @@ pub trait NetworkedComponent {
     }
 }
 
+/// Generate a NetworkFrame that contains all desired networked components
+/// Usage: network_frame!(ComponentA, ComponentB);
+/// All components need to implement the NetworkedComponent trait.
+// This traits generate an struct like:
+// struct NetworkFrame {
+//    tick: u64,
+//    entities: Vec<NetworkID>,
+//    component_a: Vec<Option<ComponentA>>
+//    component_b: Vec<Option<ComponentA>>
+// }
+//
+// Instead of Vec<(NetworkID, ComponentA, ComponentB)> we store them in separeted vecs,
+// Easier to get and apply with ecs.
 #[macro_export]
 macro_rules! network_frame {
     ($($type:ty),+) => {
@@ -255,6 +268,8 @@ pub fn read_frame_header(reader: &mut BitReader) -> Result<FrameHeader, io::Erro
     })
 }
 
+// When serializing a Vec<Option<Component>> without delta, we use 1 bit for each component to
+// check if there is Some(component) and do a full write.
 pub fn write_full_component<T: NetworkedComponent>(writer: &mut BitWriter, components: &[Option<T::Component>]) -> Result<(), io::Error> {
     for component in components.iter() {
         writer.write_bool(component.is_some())?;
@@ -300,6 +315,15 @@ pub fn generate_delta_mapping(previous_entities: &[NetworkID], current_entities:
     map
 }
 
+// When serializing a Vec<Option<Component>> with delta, we use 2 bits to see what happened since
+// the delta frame:
+//
+//   FullChange  -> We can't delta with the old component or there is none to compare, full write
+//                  the component
+//   NoComponent -> No component in this frame, write nothing
+//   NoChange    -> The component is the same, write nothing
+//   DeltaChange -> The component has change and we can delta encode with the old one, delta write
+//
 pub fn write_delta_component<T: NetworkedComponent>(
     writer: &mut BitWriter,
     entities: &[NetworkID],
