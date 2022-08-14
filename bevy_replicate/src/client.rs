@@ -91,7 +91,7 @@ fn update_frame<T: NetworkedFrame>(world: &mut World) {
 }
 
 impl<T: NetworkedFrame> SnapshotInterpolationBuffer<T> {
-    fn new(buffer_capacity: usize, playout_delay: Duration, send_rate: f64) -> Self {
+    pub(crate) fn new(buffer_capacity: usize, playout_delay: Duration, send_rate: f64) -> Self {
         Self {
             start_time: Duration::ZERO,
             start_tick: 0,
@@ -108,7 +108,7 @@ impl<T: NetworkedFrame> SnapshotInterpolationBuffer<T> {
         }
     }
 
-    fn add_snapshot(&mut self, current_time: Duration, snapshot: T) {
+    pub(crate) fn add_snapshot(&mut self, current_time: Duration, snapshot: T) {
         let tick = snapshot.tick();
         if self.stopped {
             self.start_tick = tick;

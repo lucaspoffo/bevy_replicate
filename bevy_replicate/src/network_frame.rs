@@ -248,10 +248,7 @@ pub fn read_frame_header(reader: &mut BitReader) -> Result<FrameHeader, io::Erro
 
 pub fn write_full_component<T: Networked>(writer: &mut BitWriter, components: &[Option<T::Component>]) -> Result<(), io::Error> {
     for component in components.iter() {
-        match component {
-            Some(_) => writer.write_bits(ComponentChange::FullChange as u32, 1)?,
-            None => writer.write_bits(ComponentChange::NoComponent as u32, 1)?,
-        }
+        writer.write_bool(component.is_some())?;
     }
 
     for component in components.iter() {
@@ -264,25 +261,19 @@ pub fn write_full_component<T: Networked>(writer: &mut BitWriter, components: &[
 }
 
 pub fn read_full_component<T: Networked>(reader: &mut BitReader, entities_len: usize) -> Result<Vec<Option<T::Component>>, io::Error> {
-    let mut changes = Vec::with_capacity(entities_len);
+    let mut has_components = Vec::with_capacity(entities_len);
     for _ in 0..entities_len {
-        let change = reader.read_bits(1)? as u8;
-        // Reading 1 bit should always return a valid ComponentChange id
-        let change = ComponentChange::try_from(change).unwrap();
-        changes.push(change);
+        let has_component = reader.read_bool()?;
+        has_components.push(has_component);
     }
 
     let mut components: Vec<Option<T::Component>> = Vec::with_capacity(entities_len);
-    for change in changes.iter() {
-        match change {
-            ComponentChange::FullChange => {
-                let component = T::read_full(reader)?;
-                components.push(Some(component));
-            }
-            ComponentChange::NoComponent => {
-                components.push(None);
-            }
-            _ => unreachable!("Reading one bit should always return FullChange or Removed"),
+    for &has_component in has_components.iter() {
+        if has_component {
+            let component = T::read_full(reader)?;
+            components.push(Some(component));
+        } else {
+            components.push(None);
         }
     }
 
@@ -320,7 +311,7 @@ pub fn write_delta_component<T: Networked>(
             (None, Some(_)) => write_change(ComponentChange::FullChange)?,
             (Some(previous), Some(current)) if previous == current => write_change(ComponentChange::NoChange)?,
             (Some(previous), Some(current)) if T::can_delta(previous, current) => write_change(ComponentChange::DeltaChange)?,
-            (_, Some(_)) => write_change(ComponentChange::FullChange)?,
+            (Some(_), Some(_)) => write_change(ComponentChange::FullChange)?,
         }
     }
 
@@ -396,9 +387,11 @@ pub fn read_delta_component<T: Networked>(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use bevy::prelude::Component;
 
-    use crate::{sequence_buffer::SequenceBuffer, server::NetworkFrameBuffer};
+    use crate::client::SnapshotInterpolationBuffer;
 
     use super::*;
 
@@ -495,9 +488,9 @@ mod tests {
         // 25 + 72 + 12 + 102 = 211 bits written
 
         let mut world = bevy::prelude::World::new();
-        let mut buffer = SequenceBuffer::with_capacity(5);
-        buffer.insert(first_frame.tick, first_frame.clone());
-        world.insert_resource(NetworkFrameBuffer(buffer));
+        let mut buffer = SnapshotInterpolationBuffer::new(5, Duration::ZERO, 60.);
+        buffer.add_snapshot(Duration::ZERO, first_frame.clone());
+        world.insert_resource(buffer);
 
         let mut writer = BitWriter::with_capacity(100);
         second_frame.write_delta_frame(&mut writer, &first_frame).unwrap();
