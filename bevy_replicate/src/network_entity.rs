@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 const ID_BITS: usize = 12;
-const MAX_ID: u16 = 1 << ID_BITS - 1;
+const MAX_ID: u16 = (1 << ID_BITS) - 1;
 pub(crate) const MAX_LENGTH: usize = 1 << ID_BITS;
 
 #[derive(Debug, Component, Copy, Clone, PartialEq, Eq, Hash)]

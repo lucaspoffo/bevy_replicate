@@ -140,16 +140,14 @@ impl<T: NetworkedFrame> SnapshotInterpolationBuffer<T> {
             }
         }
 
-        if !self.interpolating {
-            if let Some(_) = self.buffer.get(interpolation_tick) {
-                self.interpolation_start_tick = interpolation_tick;
-                self.interpolation_end_tick = interpolation_tick;
+        if !self.interpolating && self.buffer.contains(interpolation_tick) {
+            self.interpolation_start_tick = interpolation_tick;
+            self.interpolation_end_tick = interpolation_tick;
 
-                self.interpolation_start_time = frames_since_start.div_f64(self.tick_rate);
-                self.interpolation_end_time = self.interpolation_start_time;
+            self.interpolation_start_time = frames_since_start.div_f64(self.tick_rate);
+            self.interpolation_end_time = self.interpolation_start_time;
 
-                self.interpolating = true;
-            }
+            self.interpolating = true;
         }
 
         if !self.interpolating {

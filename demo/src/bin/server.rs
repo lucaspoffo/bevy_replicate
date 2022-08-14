@@ -71,7 +71,7 @@ fn server_update_system(
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
-                last_received_tick.0.remove(&id);
+                last_received_tick.0.remove(id);
                 for (entity, player, _) in player_query.iter() {
                     if player.0 == *id {
                         commands.entity(entity).despawn();

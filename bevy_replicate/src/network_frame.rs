@@ -260,10 +260,8 @@ pub fn write_full_component<T: NetworkedComponent>(writer: &mut BitWriter, compo
         writer.write_bool(component.is_some())?;
     }
 
-    for component in components.iter() {
-        if let Some(component) = component {
-            T::write_full(component, writer)?;
-        }
+    for component in components.iter().flatten() {
+        T::write_full(component, writer)?;
     }
 
     Ok(())

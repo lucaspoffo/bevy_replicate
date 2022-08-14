@@ -3,6 +3,7 @@ use crate::{client::NetworkInterpolation, network_frame::NetworkedComponent};
 use bevy::{ecs::world::EntityMut, prelude::*};
 use bit_serializer::{BitReader, BitWriter};
 use std::io;
+use std::f32::consts::FRAC_1_SQRT_2;
 
 // TODO: add configuration
 pub struct TransformNetworked;
@@ -130,7 +131,7 @@ fn read_f32_range(reader: &mut BitReader, min: f32, max: f32, precision: f32) ->
 
 fn write_f32_range_bits(writer: &mut BitWriter, mut value: f32, min: f32, max: f32, bits: usize) -> Result<(), io::Error> {
     let delta = max - min;
-    let umax = 1 << bits - 1;
+    let umax = (1 << bits) - 1;
     let q = umax as f32 / delta;
 
     if value < min {
@@ -148,7 +149,7 @@ fn write_f32_range_bits(writer: &mut BitWriter, mut value: f32, min: f32, max: f
 
 fn read_f32_range_bits(reader: &mut BitReader, min: f32, max: f32, bits: usize) -> Result<f32, io::Error> {
     let delta = max - min;
-    let umax = 1 << bits - 1;
+    let umax = (1 << bits) - 1;
     let q = umax as f32 / delta;
 
     let u = reader.read_bits(bits)?;
@@ -177,7 +178,7 @@ fn write_quat(writer: &mut BitWriter, quat: Quat, bits: usize) -> Result<(), io:
 
     for i in 0..4 {
         if i != largest_index {
-            write_f32_range_bits(writer, quat[i], -0.707107, 0.707107, bits)?;
+            write_f32_range_bits(writer, quat[i], -FRAC_1_SQRT_2, FRAC_1_SQRT_2, bits)?;
         }
     }
 
@@ -187,9 +188,9 @@ fn write_quat(writer: &mut BitWriter, quat: Quat, bits: usize) -> Result<(), io:
 fn read_quat(reader: &mut BitReader, bits: usize) -> Result<Quat, io::Error> {
     let largest_index = reader.read_bits(2)? as usize;
 
-    let a = read_f32_range_bits(reader, -0.707107, 0.707107, bits)?;
-    let b = read_f32_range_bits(reader, -0.707107, 0.707107, bits)?;
-    let c = read_f32_range_bits(reader, -0.707107, 0.707107, bits)?;
+    let a = read_f32_range_bits(reader, -FRAC_1_SQRT_2, FRAC_1_SQRT_2, bits)?;
+    let b = read_f32_range_bits(reader, -FRAC_1_SQRT_2, FRAC_1_SQRT_2, bits)?;
+    let c = read_f32_range_bits(reader, -FRAC_1_SQRT_2, FRAC_1_SQRT_2, bits)?;
 
     let mut result = [0.0; 4];
     result[largest_index] = f32::sqrt(1.0 - a * a - b * b - c * c);
