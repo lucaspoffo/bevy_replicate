@@ -4,6 +4,7 @@ use bit_serializer::BitReader;
 use std::{collections::HashMap, io, marker::PhantomData, time::Duration};
 
 use crate::{sequence_buffer::SequenceBuffer, NetworkID, NetworkedFrame};
+use iyes_loopless::prelude::*;
 
 #[doc(hidden)]
 pub struct NetworkMapping(pub HashMap<NetworkID, Entity>);
@@ -83,7 +84,7 @@ pub struct SnapshotInterpolationBuffer<T> {
     pub buffer: SequenceBuffer<T>,
 }
 
-fn update_frame<T: NetworkedFrame>(world: &mut World) {
+pub fn update_frame<T: NetworkedFrame>(world: &mut World) {
     world.resource_scope(|world, mut interpolation_buffer: Mut<SnapshotInterpolationBuffer<T>>| {
         let current_time = world.resource::<Time>().time_since_startup();
         interpolation_buffer.update(current_time, world);
@@ -189,4 +190,72 @@ impl<T: NetworkedFrame> SnapshotInterpolationBuffer<T> {
         let mut interpolation = world.resource_mut::<NetworkInterpolation>();
         interpolation.0 = t;
     }
+}
+
+pub struct ReplicateClientStatePlugin<T, S> {
+    config: ReplicateClientConfig,
+    data: PhantomData<T>,
+    state: PhantomData<S>,
+}
+
+impl<T, S> Default for ReplicateClientStatePlugin<T, S> {
+    fn default() -> Self {
+        Self {
+            config: Default::default(),
+            data: PhantomData,
+            state: PhantomData,
+        }
+    }
+}
+
+pub struct ReplicateClientConfig {
+    pub tick_rate: f64,
+    pub playout_delay: Duration,
+    pub buffer_size: usize,
+}
+
+impl Default for ReplicateClientConfig {
+    fn default() -> Self {
+        Self {
+            tick_rate: 20.,
+            playout_delay: Duration::from_millis(50),
+            buffer_size: 60,
+        }
+    }
+}
+
+impl<T: NetworkedFrame, S: bevy::ecs::schedule::StateData> ReplicateClientStatePlugin<T, S> {
+    pub fn new(config: ReplicateClientConfig) -> Self {
+        Self {
+            config,
+            data: PhantomData,
+            state: PhantomData,
+        }
+    }
+
+    pub fn build(self, app: &mut App, state: S) {
+        app.insert_resource(self.config);
+        app.add_enter_system(state.clone(), resources_setup::<T>);
+        app.add_exit_system(state.clone(), resources_cleanup::<T>);
+
+        app.add_system_to_stage(
+            CoreStage::PreUpdate,
+            iyes_loopless::condition::IntoConditionalExclusiveSystem::run_in_state(update_frame::<T>, state).at_end(),
+        );
+    }
+}
+
+fn resources_setup<T: NetworkedFrame>(mut commands: Commands, config: Res<ReplicateClientConfig>) {
+    commands.insert_resource(LastReceivedNetworkTick(None));
+    commands.insert_resource(NetworkMapping(HashMap::new()));
+    commands.insert_resource(NetworkInterpolation(0.));
+    let interpolation_buffer = SnapshotInterpolationBuffer::<T>::new(config.buffer_size, config.playout_delay, config.tick_rate);
+    commands.insert_resource(interpolation_buffer);
+}
+
+fn resources_cleanup<T: NetworkedFrame>(mut commands: Commands) {
+    commands.remove_resource::<LastReceivedNetworkTick>();
+    commands.remove_resource::<NetworkMapping>();
+    commands.remove_resource::<NetworkInterpolation>();
+    commands.remove_resource::<SnapshotInterpolationBuffer<T>>();
 }

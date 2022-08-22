@@ -7,6 +7,9 @@ pub mod server;
 
 #[doc(hidden)]
 pub use bevy;
+#[doc(hidden)]
+pub use paste;
+
 pub use bit_serializer::{BitReader, BitWriter};
 
 pub use network_entity::{NetworkEntities, NetworkID};

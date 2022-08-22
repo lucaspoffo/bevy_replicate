@@ -77,7 +77,7 @@ pub trait NetworkedComponent {
 #[macro_export]
 macro_rules! network_frame {
     ($($type:ty),+) => {
-        paste::paste! {
+        $crate::paste::paste! {
             #[derive(Debug, PartialEq, Clone)]
             pub struct NetworkFrame {
                 tick: u64,
